@@ -1,7 +1,7 @@
 // React and react components
 import React from 'react'
 import ReactDOM from 'react-dom'
-import {Provider} from 'react-redux'
+import { Provider } from 'react-redux'
 import App from './containers/App'
 
 // Utils
@@ -72,34 +72,18 @@ const UNDO_KEYS = ['z']
 let random = null
 let lateralMovementRate = null // Rate of pieces moving by user control in steps per second
 let downMovementRate = null // Rate of pieces moving down by user control in steps per second
-let pauseRate = null
 let lastRightMove = 0
 let lastLeftMove = 0
 let lastDownMove = 0
 let lastRotate = 0
-let lastPause = 0
 let timeSincePieceLastFell = 0 // time since the piece last moved down automatically
 let lastFrameTime = 0 // previous frame's current time
 let previousDeterministicModeState = config.deterministicMode
 
-let getGamepad = null
-const BUTTON_THRESHOLD = 0.1
-const AXIS_THRESHOLD = 0.8
-const ROTATE_LEFT_BUTTONS = [2, 1]
-const ROTATE_RIGHT_BUTTONS = [0, 12]
-const LEFT_BUTTONS = [14]
-const DOWN_BUTTONS = [13]
-const RIGHT_BUTTONS = [15]
-const START_BUTTONS = [9]
-const UNDO_BUTTONS = [8]
-const LEFT_AXIS = [0, -1]
-const RIGHT_AXIS = [0, 1]
-const DOWN_AXIS = [1, 1]
-
 // Main executable code:
 main()
 
-function main () {
+function main() {
   // Initialize pressed utility for tracking key presses
   pressed.start(window)
 
@@ -115,11 +99,6 @@ function main () {
   // listen for changes on the redux state
   store.subscribe(onStateChange)
 
-  window.addEventListener('gamepadconnected', e => {
-    connectGamepad(e.gamepad.index)
-  })
-  connectGamepad(0)
-
   // Automatically pause when window is out of focus
   window.onblur = (e) => {
     if (getGameState() === gameState.GAME_STATE_RUNNING) {
@@ -134,15 +113,7 @@ function main () {
   }
 }
 
-function connectGamepad (index) {
-  if (navigator && navigator.getGamepads) {
-    getGamepad = () => navigator.getGamepads()[index]
-    // console.log('Gamepad connected:')
-    // console.log(getGamepad())
-  }
-}
-
-function onStateChange () {
+function onStateChange() {
   if (previousDeterministicModeState !== getDeterministicMode()) {
     // if deterministicMode has changed, reset the game.
     previousDeterministicModeState = getDeterministicMode()
@@ -150,12 +121,12 @@ function onStateChange () {
   }
 }
 
-function onFrame (currentTime) {
+function onFrame(currentTime) {
   update(currentTime)
   window.requestAnimationFrame(onFrame)
 }
 
-function resetGame () {
+function resetGame() {
   // Create Random Number Generator.
   // If running in deterministic mode, the random number generator
   // will use a random seed that creates a repeatable pattern of blocks
@@ -170,7 +141,6 @@ function resetGame () {
   lastFrameTime = 0
   lateralMovementRate = config.lateralMovementRate
   downMovementRate = config.downMovementRate
-  pauseRate = config.pauseRate
 
   history.resetHistory()
 
@@ -185,12 +155,12 @@ function resetGame () {
   startGame()
 }
 
-function update (currentTime) {
+function update(currentTime) {
   let deltaTime = currentTime - lastFrameTime
   lastFrameTime = currentTime
 
   // Handle pausing and restarting of game.
-  handleStartAndUndoInput(currentTime)
+  handleStartButton(currentTime)
 
   // If game isn't running, ignore the rest of the update
   if (getGameState() !== gameState.GAME_STATE_RUNNING) {
@@ -215,68 +185,24 @@ function update (currentTime) {
   }
 }
 
-function buttonPresed (buttons) {
-  if (!getGamepad) { return false }
-
-  return buttons.reduce((result, buttonId) => {
-    let button = getGamepad().buttons[buttonId]
-    let value = 0
-    if (!isNaN(button)) { value = button }
-    if (typeof (button) === 'object') { value = button.value }
-    if (button.pressed || value > BUTTON_THRESHOLD) {
-      return result || true
+function handleStartButton(currentTime) {
+  if (pressed.some(...START_KEYS)) {
+    if (getGameState() === gameState.GAME_STATE_GAME_OVER) {
+      resetGame()
+    } else {
+      getGameState() === gameState.GAME_STATE_PAUSED ? unpauseGame() : pauseGame()
     }
-    return result || false
-  }, false)
-}
-
-function axisPressed (axisId, direction = 1) {
-  if (!getGamepad) { return false }
-
-  let axis = getGamepad().axes[axisId]
-  if (Math.abs(axis) > AXIS_THRESHOLD) {
-    if ((direction > 0 && axis > 0) || (direction < 0 && axis < 0)) {
-      return true
-    }
-  }
-  return false
-}
-
-function handleStartAndUndoInput (currentTime) {
-  const pauseThreshold = Math.ceil(1000 / pauseRate)
-  const isPauseAllowed = (currentTime - lastPause) > pauseThreshold
-
-  if (pressed.some(...START_KEYS) || buttonPresed(START_BUTTONS) || pressed.every(...UNDO_KEYS) || buttonPresed(UNDO_BUTTONS)) {
-    if (isPauseAllowed) {
-      if (pressed.some(...START_KEYS) || buttonPresed(START_BUTTONS)) {
-        if (getGameState() === gameState.GAME_STATE_GAME_OVER) {
-          resetGame()
-        } else {
-          getGameState() === gameState.GAME_STATE_PAUSED ? unpauseGame() : pauseGame()
-        }
-
-        pressed.remove(...START_KEYS)
-        lastPause = currentTime
-      }
-
-      if (pressed.every(...UNDO_KEYS) || buttonPresed(UNDO_BUTTONS)) {
-        undo()
-        pressed.remove(...UNDO_KEYS)
-        lastPause = currentTime
-      }
-    }
-  } else {
-    lastPause = 0
+    pressed.remove(...START_KEYS)
   }
 }
 
 /**
-* Handles user input for movement.
-* Checks to see if these input keys are currently pressed.
-* Each movement has a built in timer which allows some fine grain control over
-* how often each input can be executed.
-*/
-function handleUserMovement (currentTime) {
+ * Handles user input for movement.
+ * Checks to see if these input keys are currently pressed.
+ * Each movement has a built in timer which allows some fine grain control over
+ * how often each input can be executed.
+ */
+function handleUserMovement(currentTime) {
   // Calculate whether movement is allowed
   const lateralMovementThreshold = Math.ceil(1000 / lateralMovementRate)
   const isLeftMovementAllowed = (currentTime - lastLeftMove) > lateralMovementThreshold
@@ -284,7 +210,7 @@ function handleUserMovement (currentTime) {
   const isRotateAllowed = (currentTime - lastRotate) > lateralMovementThreshold
   const isDownMovementAllowed = (currentTime - lastDownMove) > (Math.ceil(1000 / downMovementRate))
 
-  if (pressed.some(...DOWN_KEYS) || buttonPresed(DOWN_BUTTONS) || axisPressed(...DOWN_AXIS)) {
+  if (pressed.some(...DOWN_KEYS)) {
     if (isDownMovementAllowed) {
       lastDownMove = currentTime
 
@@ -303,7 +229,7 @@ function handleUserMovement (currentTime) {
     lastDownMove = 0
   }
 
-  if (pressed.some(...LEFT_KEYS) || buttonPresed(LEFT_BUTTONS) || axisPressed(...LEFT_AXIS)) {
+  if (pressed.some(...LEFT_KEYS)) {
     if (isLeftMovementAllowed) {
       lastLeftMove = currentTime
       movePieceLeft(getCurrentPiece())
@@ -312,7 +238,7 @@ function handleUserMovement (currentTime) {
     lastLeftMove = 0
   }
 
-  if (pressed.some(...RIGHT_KEYS) || buttonPresed(RIGHT_BUTTONS) || axisPressed(...RIGHT_AXIS)) {
+  if (pressed.some(...RIGHT_KEYS)) {
     if (isRightMovementAllowed) {
       lastRightMove = currentTime
       movePieceRight(getCurrentPiece())
@@ -321,25 +247,30 @@ function handleUserMovement (currentTime) {
     lastRightMove = 0
   }
 
-  if (pressed.some(...ROTATE_LEFT_KEYS, ...ROTATE_RIGHT_KEYS) || buttonPresed(ROTATE_LEFT_BUTTONS) || buttonPresed(ROTATE_RIGHT_BUTTONS)) {
+  if (pressed.some(...ROTATE_LEFT_KEYS, ...ROTATE_RIGHT_KEYS)) {
     if (isRotateAllowed) {
       lastRotate = currentTime
-      if (pressed.some(...ROTATE_LEFT_KEYS) || buttonPresed(ROTATE_LEFT_BUTTONS)) {
+      if (pressed.some(...ROTATE_LEFT_KEYS)) {
         rotatePieceLeft(getCurrentPiece())
       }
-      if (pressed.some(...ROTATE_RIGHT_KEYS) || buttonPresed(ROTATE_RIGHT_BUTTONS)) {
+      if (pressed.some(...ROTATE_RIGHT_KEYS)) {
         rotatePieceRight(getCurrentPiece())
       }
     }
   } else {
     lastRotate = 0
   }
+
+  if (pressed.every(...UNDO_KEYS)) {
+    undo()
+    pressed.remove(...UNDO_KEYS)
+  }
 }
 
 /**
-* Updates position of piece if enough time has elapsed since last downward movement.
-*/
-function handleAutomaticFalling (deltaTime) {
+ * Updates position of piece if enough time has elapsed since last downward movement.
+ */
+function handleAutomaticFalling(deltaTime) {
   timeSincePieceLastFell += deltaTime
   const shouldPieceFall = timeSincePieceLastFell > Math.ceil(1000 / getFallRate())
   if (shouldPieceFall) {
@@ -349,9 +280,9 @@ function handleAutomaticFalling (deltaTime) {
 }
 
 /**
-* Affixes the current piece to the board.
-*/
-function mergeCurrentPieceIntoBoard () {
+ * Affixes the current piece to the board.
+ */
+function mergeCurrentPieceIntoBoard() {
   // First moves the piece up one space.
   // This bit of foo allows you to shift the piece around a bit and only
   // detects collisions at the end of the step instead of at the beginning.
@@ -364,9 +295,9 @@ function mergeCurrentPieceIntoBoard () {
 }
 
 /**
-* Removes and scores completed lines in the board.
-*/
-function clearCompletedLines () {
+ * Removes and scores completed lines in the board.
+ */
+function clearCompletedLines() {
   const fullRowIndeces = getFullRows(getBoard())
   const numberOfClearedLines = fullRowIndeces ? fullRowIndeces.length : 0
   if (numberOfClearedLines > 0) {
@@ -377,10 +308,10 @@ function clearCompletedLines () {
 }
 
 /**
-* Positions a piece in the center of the board.
-* @returns a copy of the input piece
-*/
-function centerPiece (piece) {
+ * Positions a piece in the center of the board.
+ * @returns a copy of the input piece
+ */
+function centerPiece(piece) {
   const [W] = config.boardSize
   piece = cloneDeep(piece)
   piece.x = Math.floor((W - piece.matrix[0].length) / 2)
@@ -388,12 +319,12 @@ function centerPiece (piece) {
 }
 
 /**
-* Returns a random piece from the piece library.
-* Note: random function is defined in reset()
-* Note: the piece is not cloned
-* @returns Piece
-*/
-function getRandomPiece () {
+ * Returns a random piece from the piece library.
+ * Note: random function is defined in reset()
+ * Note: the piece is not cloned
+ * @returns Piece
+ */
+function getRandomPiece() {
   const l = pieceLibrary.length
   const i = random(l)
   const piece = pieceLibrary[i]
@@ -409,23 +340,28 @@ function getRandomPiece () {
 }
 
 /**
-* Shortcut for detecting collisions between the matrix of the board
-* and the matrix of the piece at the piece's position.
-* @returns Boolean
-*/
-function detectCollision (board = getBoard(), piece = getCurrentPiece()) {
-  const {x, y, matrix} = piece
+ * Shortcut for detecting collisions between the matrix of the board
+ * and the matrix of the piece at the piece's position.
+ * @returns Boolean
+ */
+function detectCollision(board = getBoard(), piece = getCurrentPiece()) {
+  const { x, y, matrix } = piece
   return detectMatrixCollision(board, matrix, x, y)
 }
 
 /**
-* Shortcut for detecting collisions between the matrix of the board
-* and the matrix of the piece one block below the piece's position.
-* This is used to determine if the piece will be blocked from moving
-* any further down.
-* @returns Boolean
-*/
-function detectCollisionBelow (board = getBoard(), piece = getCurrentPiece()) {
-  const {x, y, matrix} = piece
+ * Shortcut for detecting collisions between the matrix of the board
+ * and the matrix of the piece one block below the piece's position.
+ * This is used to determine if the piece will be blocked from moving
+ * any further down.
+ * @returns Boolean
+ */
+function detectCollisionBelow(board = getBoard(), piece = getCurrentPiece()) {
+  const { x, y, matrix } = piece
   return detectMatrixCollision(board, matrix, x, y + 1)
 }
+
+
+
+// WEBPACK FOOTER //
+// ./src/main.js
