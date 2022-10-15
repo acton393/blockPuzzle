@@ -360,8 +360,3 @@ function detectCollisionBelow(board = getBoard(), piece = getCurrentPiece()) {
   const { x, y, matrix } = piece
   return detectMatrixCollision(board, matrix, x, y + 1)
 }
-
-
-
-// WEBPACK FOOTER //
-// ./src/main.js
